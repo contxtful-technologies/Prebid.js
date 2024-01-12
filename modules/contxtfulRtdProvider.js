@@ -35,6 +35,7 @@ function init(config) {
 
   try {
     const {version, customer, hostname} = extractParameters(config);
+    initialReceptivity = loadSessionReceptivity(customer);
     initCustomer(version, customer, hostname);
     return true;
   } catch (error) {
@@ -44,11 +45,29 @@ function init(config) {
 }
 
 /**
+ * return receptivity in sessionStorage if any
+ */
+function loadSessionReceptivity(customer) {
+   let sessionStorageRecep = sessionStorage.getItem(customer);
+   if (!sessionStorageRecep) return null;
+   try {
+      let recep = JSON.parse(sessionStorageRecep);
+      let exp = parseInt(recep?.exp);
+      if (exp < new Date().getItem()) {
+         return null;
+      }
+      return recep?.rx;
+   } catch {
+      return null;
+   }
+}
+
+/**
  * Extract required configuration for the sub module.
  * validate that all required configuration are present and are valid.
  * Throws an error if any config is missing of invalid.
- * @param { { params: { version: String, customer: String, hostname: String } } } config
- * @return { { version: String, customer: String, hostname: String } }
+ * @param { { params: { version: String, customer: String } } } config
+ * @return { { version: String, customer: String } }
  * @throws params.{name} should be a non-empty string
  */
 function extractParameters(config) {
@@ -78,31 +97,30 @@ function initCustomer(version, customer, hostname) {
   const CONNECTOR_URL = buildUrl({
     protocol: 'https',
     host: hostname,
-    pathname: `/${version}/prebid/${customer}/connector/p.js`,
+    pathname: `/${version}/prebid/${customer}/connector/rxConnector.js`,
   });
 
   const externalScript = loadExternalScript(CONNECTOR_URL, MODULE_NAME);
-  addExternalScriptEventListener(externalScript);
+  addExternalScriptEventListener(externalScript, customer);
 }
 
 /**
  * Add event listener to the script tag for the expected events from the external script.
  * @param { HTMLScriptElement } script
  */
-function addExternalScriptEventListener(script) {
+function addExternalScriptEventListener(script, customer) {
   if (!script) {
     return;
   }
 
-  script.addEventListener('initialReceptivity', ({ detail }) => {
-    let receptivityState = detail?.ReceptivityState;
-    if (isStr(receptivityState) && !isEmptyStr(receptivityState)) {
-      initialReceptivity = receptivityState;
-    }
-  });
-
-  script.addEventListener('rxEngineIsReady', ({ detail: api }) => {
-    contxtfulModule = api;
+  script.addEventListener('rxConnectorIsReady',
+     async ({ detail: rxConnector }) => {
+      const { rxApiBuilder, fetchConfig } = rxConnector;
+      let cfg = await fetchConfig(customer);
+      if (!cfg) {
+         return;
+      }
+      contxtfulModule = await rxApiBuidler(cfg);
   });
 }
 
