@@ -66,8 +66,8 @@ function loadSessionReceptivity(customer) {
  * Extract required configuration for the sub module.
  * validate that all required configuration are present and are valid.
  * Throws an error if any config is missing of invalid.
- * @param { { params: { version: String, customer: String } } } config
- * @return { { version: String, customer: String } }
+ * @param { { params: { version: String, customer: String, hostname: String } } } config
+ * @return { { version: String, customer: String, hostname: String } }
  * @throws params.{name} should be a non-empty string
  */
 function extractParameters(config) {
