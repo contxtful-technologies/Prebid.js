@@ -59,10 +59,29 @@ pbjs.setConfig({
           "adServerTargeting": true, // Optional, default: true
         }
       }
-    ]
+    ],
+    userSync: {
+    userIds: [
+      {
+        name: "contxtful",
+        //params: {
+        //  partner: 123456, // valid partner id
+        //  callback: (data, group) => window.pbjs.requestBids(),
+        //},
+        storage: {
+          type: "html5",
+          name: "contxtfulIqId", // set localstorage with this name
+          //expires: 8, // 8 seconds
+          //refreshInSeconds: 1 * 3600, // refresh ID every hour
+        },
+      },
+    ],
+    syncDelay: 3000,
+  },
   }
 });
 ```
+
 ## Parameters
 
 | Name                | Type     | Scope    | Description                                |

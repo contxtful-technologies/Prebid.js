@@ -17,11 +17,45 @@ import {
   isArray,
 } from '../src/utils.js';
 import { loadExternalScript } from '../src/adloader.js';
+import { getStorageManager as originalGetStorageManager } from '../src/storageManager.js';
 
 const MODULE_NAME = 'contxtful';
 const MODULE = `${MODULE_NAME}RtdProvider`;
 
 const CONTXTFUL_RECEPTIVITY_DOMAIN = 'api.receptivity.io';
+
+// Extends the Storage manager to support session storage
+function extendStorageManager(storageManager) {
+  function getDataFromSessionStorage(key, done) {
+    let cb = function (result) {
+      if (result && result.valid && hasSessionStorage()) {
+        return window.sessionStorage.getItem(key);
+      }
+      return null;
+    };
+    return storageManager.schedule(cb, 'html5', done);
+  }
+
+  function hasSessionStorage() {
+    try {
+      return !!window.sessionStorage;
+    } catch (e) {
+      console.error('Session storage API disabled');
+    }
+    return false;
+  }
+
+  return {
+    ...storageManager,
+    getDataFromSessionStorage
+  };
+}
+function getStorageManager(options) {
+  const originalStorageManager = originalGetStorageManager(options);
+  return extendStorageManager(originalStorageManager);
+}
+
+const storageManager = getStorageManager({bidderCode: MODULE_NAME});
 
 let rxApi = null;
 let isFirstBidRequestCall = true;
@@ -35,8 +69,22 @@ function getRxEngineReceptivity(requester) {
   return rxApi?.receptivity(requester);
 }
 
+function getItemFromSessionStorage(key) {
+
+  let value = null;
+  try {
+    // Use the Storage Manager
+    value = storageManager.getDataFromSessionStorage(key);
+  } catch (error) {
+  }
+
+  return value;
+
+}
+
 function loadSessionReceptivity(requester) {
-  let sessionStorageValue = sessionStorage.getItem(requester);
+
+  let sessionStorageValue = getItemFromSessionStorage(requester);
   if (!sessionStorageValue) {
     return null;
   }
