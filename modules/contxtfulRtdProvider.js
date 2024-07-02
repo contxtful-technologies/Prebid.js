@@ -74,7 +74,7 @@ function getItemFromSessionStorage(key) {
   let value = null;
   try {
     // Use the Storage Manager
-    value = storageManager.getDataFromSessionStorage(key);
+    value = storageManager.getDataFromSessionStorage(key, null);
   } catch (error) {
   }
 
