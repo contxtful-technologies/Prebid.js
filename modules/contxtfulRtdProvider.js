@@ -17,23 +17,52 @@ import {
   isArray,
 } from '../src/utils.js';
 import { loadExternalScript } from '../src/adloader.js';
-import { getStorageManager as originalGetStorageManager } from '../src/storageManager.js';
+import { getStorageManager as originalGetStorageManager, newStorageManager, STORAGE_TYPE_LOCALSTORAGE } from '../src/storageManager.js';
+import { isActivityAllowed } from '../src/activities/rules.js';
+import { ACTIVITY_ACCESS_DEVICE } from '../src/activities/activities.js';
 
 const MODULE_NAME = 'contxtful';
 const MODULE = `${MODULE_NAME}RtdProvider`;
 
 const CONTXTFUL_RECEPTIVITY_DOMAIN = 'api.receptivity.io';
 
-// Extends the Storage manager to support session storage
-function extendStorageManager(storageManager) {
+// Begin Prebid Storage Manager Extension
+function extendStorageManager(storageManager, options) {
+  function isValid(cb, storageType) {
+    const moduleName = options.moduleName || options.bidderCode;
+    const moduleType = options.moduleType || 'bidder';
+
+    const result = {
+      valid: isActivityAllowed(ACTIVITY_ACCESS_DEVICE, {
+        moduleType,
+        moduleName,
+        activity: {
+          storageType: storageType
+        }
+      })
+    };
+    return cb(result);
+  }
+
+  function schedule(operation, storageType, done) {
+    if (done && typeof done === 'function') {
+      storageManager.storageCallbacks.push(function() {
+        let result = isValid(operation, storageType);
+        done(result);
+      });
+    } else {
+      return isValid(operation, storageType);
+    }
+  }
+
   function getDataFromSessionStorage(key, done) {
-    let cb = function (result) {
+    let cb = function(result) {
       if (result && result.valid && hasSessionStorage()) {
         return window.sessionStorage.getItem(key);
       }
       return null;
     };
-    return storageManager.schedule(cb, 'html5', done);
+    return schedule(cb, STORAGE_TYPE_LOCALSTORAGE, done);
   }
 
   function hasSessionStorage() {
@@ -47,15 +76,18 @@ function extendStorageManager(storageManager) {
 
   return {
     ...storageManager,
+    schedule,
     getDataFromSessionStorage
   };
 }
+
 function getStorageManager(options) {
-  const originalStorageManager = originalGetStorageManager(options);
-  return extendStorageManager(originalStorageManager);
+  const storageManager = originalGetStorageManager(options);
+  return extendStorageManager(storageManager, options);
 }
 
-const storageManager = getStorageManager({bidderCode: MODULE_NAME});
+const storageManager = getStorageManager({ bidderCode: MODULE_NAME });
+// End Prebid Storage Manager Extension
 
 let rxApi = null;
 let isFirstBidRequestCall = true;
@@ -102,7 +134,7 @@ function loadSessionReceptivity(requester) {
   } catch {
     return null;
   }
-   */
+
 }
 
 /**
