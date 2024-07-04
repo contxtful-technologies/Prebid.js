@@ -102,7 +102,8 @@ function loadSessionReceptivity(requester) {
   } catch {
     return null;
   }
-};
+   */
+}
 
 /**
  * Prepare a receptivity batch
