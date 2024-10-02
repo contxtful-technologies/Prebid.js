@@ -1,7 +1,11 @@
 import { contxtfulSubmodule, extractParameters } from '../../../modules/contxtfulRtdProvider.js';
 import { expect } from 'chai';
 import { loadExternalScriptStub } from 'test/mocks/adloaderStub.js';
+import { getStorageManager } from '../../../src/storageManager.js';
+import { MODULE_TYPE_UID } from '../../../src/activities/modules.js';
 import * as events from '../../../src/events';
+
+const MODULE_NAME = 'contxtful';
 
 const VERSION = 'v1';
 const CUSTOMER = 'CUSTOMER';
@@ -18,13 +22,6 @@ const RX_CONNECTOR_MOCK = {
 
 const TIMEOUT = 10;
 const RX_CONNECTOR_IS_READY_EVENT = new CustomEvent('rxConnectorIsReady', { detail: {[CUSTOMER]: RX_CONNECTOR_MOCK}, bubbles: true });
-
-function writeToStorage(requester, timeDiff) {
-  let rx = RX_FROM_SESSION_STORAGE;
-  let exp = new Date().getTime() + timeDiff;
-  let item = { rx, exp, };
-  sessionStorage.setItem(requester, JSON.stringify(item),);
-}
 
 function buildInitConfig(version, customer) {
   return {
@@ -43,6 +40,8 @@ describe('contxtfulRtdProvider', function () {
   let sandbox = sinon.sandbox.create();
   let loadExternalScriptTag;
   let eventsEmitSpy;
+
+  const storage = getStorageManager({ moduleType: MODULE_TYPE_UID, moduleName: MODULE_NAME });
 
   beforeEach(() => {
     loadExternalScriptTag = document.createElement('script');
@@ -322,22 +321,18 @@ describe('contxtfulRtdProvider', function () {
     ];
 
     theories.forEach(([adUnits, expected, _description]) => {
-      // TODO: commented out because of rule violations
-      /*
       it('uses non-expired info from session storage and adds receptivity to the ad units using session storage', function (done) {
-        let config = buildInitConfig(VERSION, CUSTOMER);
         // Simulate that there was a write to sessionStorage in the past.
-        writeToStorage(config.params.customer, +100);
+        storage.setDataInSessionStorage(`CONTXTFUL_${CUSTOMER}`, JSON.stringify({exp: new Date().getTime() + 1000, rx: RX_FROM_SESSION_STORAGE}))
+
+        let config = buildInitConfig(VERSION, CUSTOMER);
         contxtfulSubmodule.init(config);
 
-        setTimeout(() => {
-          expect(contxtfulSubmodule.getTargetingData(adUnits, config)).to.deep.equal(
-            expected
-          );
-          done();
-        }, TIMEOUT);
+        let targetingData = contxtfulSubmodule.getTargetingData(adUnits, config);
+        expect(targetingData).to.deep.equal(expected);
+
+        done();
       });
-       */
     });
   });
 
@@ -360,13 +355,15 @@ describe('contxtfulRtdProvider', function () {
 
     theories.forEach(([adUnits, expected, _description]) => {
       it('ignores expired info from session storage and does not forward the info to ad units', function (done) {
-        let config = buildInitConfig(VERSION, CUSTOMER);
         // Simulate that there was a write to sessionStorage in the past.
-        writeToStorage(config.params.customer, -100);
+        storage.setDataInSessionStorage(`CONTXTFUL_${CUSTOMER}`, JSON.stringify({exp: new Date().getTime() - 100, rx: RX_FROM_SESSION_STORAGE}));
+
+        let config = buildInitConfig(VERSION, CUSTOMER);
         contxtfulSubmodule.init(config);
-        expect(contxtfulSubmodule.getTargetingData(adUnits, config)).to.deep.equal(
-          expected
-        );
+
+        let targetingData = contxtfulSubmodule.getTargetingData(adUnits, config);
+        expect(targetingData).to.deep.equal(expected);
+
         done();
       });
     });
@@ -457,13 +454,12 @@ describe('contxtfulRtdProvider', function () {
 
   describe('getBidRequestData', function () {
     // TODO: commented out because of rule violations
-    /*
     it('uses non-expired info from session storage and adds receptivity to the reqBidsConfigObj', function (done) {
       let config = buildInitConfig(VERSION, CUSTOMER);
-      // Simulate that there was a write to sessionStorage in the past.
-      writeToStorage(config.params.bidders[0], +100);
 
-      contxtfulSubmodule.init(config);
+      // Simulate that there was a write to sessionStorage in the past.
+      let bidder = config.params.bidders[0];
+      storage.setDataInSessionStorage(`CONTXTFUL_${bidder}`, JSON.stringify({exp: new Date().getTime() + 1000, rx: RX_FROM_SESSION_STORAGE}));
 
       let reqBidsConfigObj = {
         ortb2Fragments: {
@@ -472,33 +468,30 @@ describe('contxtfulRtdProvider', function () {
         },
       };
 
-      let expectedOrtb2 = {
-        user: {
-          data: [
-            {
-              name: 'contxtful',
-              ext: {
-                rx: RX_FROM_SESSION_STORAGE,
-                params: {
-                  ev: config.params?.version,
-                  ci: config.params?.customer,
-                },
-              },
+      let assert = () => {
+        let ortb2BidderFragment = reqBidsConfigObj.ortb2Fragments.bidder[bidder];
+        let userData = ortb2BidderFragment.user.data;
+        let contxtfulData = userData[0];
+
+        expect(contxtfulData).to.deep.equal({
+          name: 'contxtful',
+          ext: {
+            rx: RX_FROM_SESSION_STORAGE,
+            params: {
+              ev: config.params.version,
+              ci: config.params.customer,
             },
-          ],
-        },
-      };
+          },
+        });
+
+        done();
+      }
+
+      contxtfulSubmodule.init(config);
 
       // Since the RX_CONNECTOR_IS_READY_EVENT event was not dispatched, the RX engine is not loaded.
-      setTimeout(() => {
-        const noOp = () => undefined;
-        contxtfulSubmodule.getBidRequestData(reqBidsConfigObj, noOp, buildInitConfig(VERSION, CUSTOMER));
-        let actualOrtb2 = reqBidsConfigObj.ortb2Fragments.bidder[config.params.bidders[0]];
-        expect(actualOrtb2).to.deep.equal(expectedOrtb2);
-        done();
-      }, TIMEOUT);
+      contxtfulSubmodule.getBidRequestData(reqBidsConfigObj, assert, config);
     });
-     */
   });
 
   describe('getBidRequestData', function () {
