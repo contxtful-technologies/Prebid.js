@@ -25,9 +25,9 @@ const MODULE = `${MODULE_NAME}RtdProvider`;
 
 const CONTXTFUL_RECEPTIVITY_DOMAIN = 'api.receptivity.io';
 
-const storageManager = getStorageManager({
+export const storage = getStorageManager({
   moduleType: MODULE_TYPE_RTD,
-  moduleName: MODULE_NAME
+  moduleName: MODULE_NAME,
 });
 
 let rxApi = null;
@@ -43,14 +43,11 @@ function getRxEngineReceptivity(requester) {
 }
 
 function getItemFromSessionStorage(key) {
-  let value = null;
   try {
-    // Use the Storage Manager
-    value = storageManager.getDataFromSessionStorage(key, null);
+    return storage.getDataFromSessionStorage(`CONTXTFUL_${key}`);
   } catch (error) {
+    logError(MODULE, error);
   }
-
-  return value;
 }
 
 function loadSessionReceptivity(requester) {
@@ -189,8 +186,11 @@ function getTargetingData(adUnits, config, _userConsent) {
     logInfo(MODULE, 'getTargetingData');
 
     const requester = config?.params?.customer;
-    const rx = getRxEngineReceptivity(requester) ||
-      loadSessionReceptivity(requester) || {};
+    const rx =
+      getRxEngineReceptivity(requester) ||
+      loadSessionReceptivity(requester) ||
+      {};
+
     if (isEmpty(rx)) {
       return {};
     }
@@ -215,9 +215,10 @@ function getBidRequestData(reqBidsConfigObj, onDone, config, userConsent) {
   function onReturn() {
     if (isFirstBidRequestCall) {
       isFirstBidRequestCall = false;
-    };
+    }
     onDone();
   }
+
   logInfo(MODULE, 'getBidRequestData');
   const bidders = config?.params?.bidders || [];
   if (isEmpty(bidders) || !isArray(bidders)) {
@@ -240,12 +241,13 @@ function getBidRequestData(reqBidsConfigObj, onDone, config, userConsent) {
     }
     return {};
   }
+
   let rxBatch = {};
   try {
     if (isFirstBidRequestCall) {
       rxBatch = tryMethods([fromStorage, fromApiBatched, fromApiSingle]);
     } else {
-      rxBatch = tryMethods([fromApiBatched, fromApiSingle, fromStorage])
+      rxBatch = tryMethods([fromApiBatched, fromApiSingle, fromStorage]);
     }
   } catch (error) { }
 
@@ -274,13 +276,14 @@ function getBidRequestData(reqBidsConfigObj, onDone, config, userConsent) {
           ],
         },
       };
+
       mergeDeep(reqBidsConfigObj.ortb2Fragments?.bidder, {
         [bidderCode]: ortb2,
       });
     });
 
   onReturn();
-};
+}
 
 export const contxtfulSubmodule = {
   name: MODULE_NAME,
