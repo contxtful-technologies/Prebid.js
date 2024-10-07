@@ -44,7 +44,7 @@ function getRxEngineReceptivity(requester) {
 
 function getItemFromSessionStorage(key) {
   try {
-    return storage.getDataFromSessionStorage(`CONTXTFUL_${key}`);
+    return storage.getDataFromSessionStorage(key);
   } catch (error) {
     logError(MODULE, error);
   }
@@ -226,35 +226,15 @@ function getBidRequestData(reqBidsConfigObj, onDone, config, userConsent) {
     return;
   }
 
-  let fromApiBatched = () => rxApi?.receptivityBatched?.(bidders);
-  let fromApiSingle = () => prepareBatch(bidders, getRxEngineReceptivity);
-  let fromStorage = () => prepareBatch(bidders, loadSessionReceptivity);
+  let fromApi = rxApi?.receptivityBatched?.(bidders) || {};
+  let fromStorage = prepareBatch(bidders, (bidder) => loadSessionReceptivity(`${config?.params?.customer}_${bidder}`));
 
-  function tryMethods(methods) {
-    for (let method of methods) {
-      try {
-        let batch = method();
-        if (!isEmpty(batch)) {
-          return batch;
-        }
-      } catch (error) { }
-    }
-    return {};
+  let sources = [fromStorage, fromApi];
+  if (isFirstBidRequestCall) {
+    sources.reverse();
   }
 
-  let rxBatch = {};
-  try {
-    if (isFirstBidRequestCall) {
-      rxBatch = tryMethods([fromStorage, fromApiBatched, fromApiSingle]);
-    } else {
-      rxBatch = tryMethods([fromApiBatched, fromApiSingle, fromStorage]);
-    }
-  } catch (error) { }
-
-  if (isEmpty(rxBatch)) {
-    onReturn();
-    return;
-  }
+  let rxBatch = Object.assign(...sources);
 
   bidders
     .map((bidderCode) => ({ bidderCode, rx: rxBatch[bidderCode] }))

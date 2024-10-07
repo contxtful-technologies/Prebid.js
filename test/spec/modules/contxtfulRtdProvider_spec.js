@@ -14,7 +14,7 @@ const CONTXTFUL_CONNECTOR_ENDPOINT = `https://api.receptivity.io/${VERSION}/preb
 const RX_FROM_SESSION_STORAGE = { ReceptivityState: 'Receptive', test_info: 'rx_from_session_storage' };
 const RX_FROM_API = { ReceptivityState: 'Receptive', test_info: 'rx_from_engine' };
 
-const RX_API_MOCK = { receptivity: sinon.stub(), };
+const RX_API_MOCK = { receptivity: sinon.stub(), receptivityBatched: sinon.stub() };
 const RX_CONNECTOR_MOCK = {
   fetchConfig: sinon.stub(),
   rxApiBuilder: sinon.stub(),
@@ -48,7 +48,10 @@ describe('contxtfulRtdProvider', function () {
     loadExternalScriptStub.callsFake((_url, _moduleName) => loadExternalScriptTag);
 
     RX_API_MOCK.receptivity.reset();
-    RX_API_MOCK.receptivity.callsFake((tagId) => RX_FROM_API);
+    RX_API_MOCK.receptivity.callsFake(() => RX_FROM_API);
+
+    RX_API_MOCK.receptivityBatched.reset();
+    RX_API_MOCK.receptivityBatched.callsFake((bidders) => bidders.reduce((accumulator, bidder) => { accumulator[bidder] = RX_FROM_API; return accumulator; }, {}));
 
     RX_CONNECTOR_MOCK.fetchConfig.reset();
     RX_CONNECTOR_MOCK.fetchConfig.callsFake((tagId) => new Promise((resolve, reject) => resolve({ tag_id: tagId })));
@@ -323,7 +326,7 @@ describe('contxtfulRtdProvider', function () {
     theories.forEach(([adUnits, expected, _description]) => {
       it('uses non-expired info from session storage and adds receptivity to the ad units using session storage', function (done) {
         // Simulate that there was a write to sessionStorage in the past.
-        storage.setDataInSessionStorage(`CONTXTFUL_${CUSTOMER}`, JSON.stringify({exp: new Date().getTime() + 1000, rx: RX_FROM_SESSION_STORAGE}))
+        storage.setDataInSessionStorage(CUSTOMER, JSON.stringify({exp: new Date().getTime() + 1000, rx: RX_FROM_SESSION_STORAGE}))
 
         let config = buildInitConfig(VERSION, CUSTOMER);
         contxtfulSubmodule.init(config);
@@ -356,7 +359,7 @@ describe('contxtfulRtdProvider', function () {
     theories.forEach(([adUnits, expected, _description]) => {
       it('ignores expired info from session storage and does not forward the info to ad units', function (done) {
         // Simulate that there was a write to sessionStorage in the past.
-        storage.setDataInSessionStorage(`CONTXTFUL_${CUSTOMER}`, JSON.stringify({exp: new Date().getTime() - 100, rx: RX_FROM_SESSION_STORAGE}));
+        storage.setDataInSessionStorage(CUSTOMER, JSON.stringify({exp: new Date().getTime() - 100, rx: RX_FROM_SESSION_STORAGE}));
 
         let config = buildInitConfig(VERSION, CUSTOMER);
         contxtfulSubmodule.init(config);
@@ -453,13 +456,13 @@ describe('contxtfulRtdProvider', function () {
   });
 
   describe('getBidRequestData', function () {
-    // TODO: commented out because of rule violations
     it('uses non-expired info from session storage and adds receptivity to the reqBidsConfigObj', function (done) {
       let config = buildInitConfig(VERSION, CUSTOMER);
 
       // Simulate that there was a write to sessionStorage in the past.
       let bidder = config.params.bidders[0];
-      storage.setDataInSessionStorage(`CONTXTFUL_${bidder}`, JSON.stringify({exp: new Date().getTime() + 1000, rx: RX_FROM_SESSION_STORAGE}));
+
+      storage.setDataInSessionStorage(`${config.params.customer}_${bidder}`, JSON.stringify({exp: new Date().getTime() + 1000, rx: RX_FROM_SESSION_STORAGE}));
 
       let reqBidsConfigObj = {
         ortb2Fragments: {
@@ -468,7 +471,12 @@ describe('contxtfulRtdProvider', function () {
         },
       };
 
-      let assert = () => {
+      contxtfulSubmodule.init(config);
+
+      // Since the RX_CONNECTOR_IS_READY_EVENT event was not dispatched, the RX engine is not loaded.
+      contxtfulSubmodule.getBidRequestData(reqBidsConfigObj, () => {}, config);
+
+      setTimeout(() => {
         let ortb2BidderFragment = reqBidsConfigObj.ortb2Fragments.bidder[bidder];
         let userData = ortb2BidderFragment.user.data;
         let contxtfulData = userData[0];
@@ -485,12 +493,7 @@ describe('contxtfulRtdProvider', function () {
         });
 
         done();
-      }
-
-      contxtfulSubmodule.init(config);
-
-      // Since the RX_CONNECTOR_IS_READY_EVENT event was not dispatched, the RX engine is not loaded.
-      contxtfulSubmodule.getBidRequestData(reqBidsConfigObj, assert, config);
+      }, TIMEOUT);
     });
   });
 
@@ -513,7 +516,7 @@ describe('contxtfulRtdProvider', function () {
         const onDoneSpy = sinon.spy();
         contxtfulSubmodule.getBidRequestData(reqBidsConfigObj, onDoneSpy, config);
         expect(onDoneSpy.callCount).to.equal(1);
-        expect(RX_API_MOCK.receptivity.callCount).to.equal(1);
+        expect(RX_API_MOCK.receptivityBatched.callCount).to.equal(1);
         done();
       }, TIMEOUT);
     });
